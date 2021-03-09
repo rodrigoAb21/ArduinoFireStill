@@ -1,103 +1,138 @@
 #include <TinyGPS++.h>
 #include <SoftwareSerial.h>
-/*
-   This sample sketch demonstrates the normal use of a TinyGPS++ (TinyGPSPlus) object.
-   It requires the use of SoftwareSerial, and assumes that you have a
-   4800-baud serial GPS device hooked up on pins 4(rx) and 3(tx).
-*/
-static const int RXPin = 4, TXPin = 3;
-static const uint32_t GPSBaud = 9600;
 
 //Variables propias
-double lat = 0;
-double lng = 0;
-double presion = 100;
-String jsonPost = "";
+String jsonPOST = "";
+double latitud = 0;
+double longitud = 0;
+double presion = 0;
 bool okUbi = false;
+
+SoftwareSerial SIM900(7, 8); // MODULO GPRS
+SoftwareSerial NEO6M(4, 3);  // MODULO GPS
 
 // The TinyGPS++ object
 TinyGPSPlus gps;
 
-// The serial connection to the GPS device
-SoftwareSerial ss(RXPin, TXPin);
 
 void setup() {
-  Serial.begin(115200);
-  ss.begin(GPSBaud);
+  
+
+  SIM900.begin(19200);
+  NEO6M.begin(9600);
+  Serial.begin(19200);
+
+  initGprs();
 }
 
 void loop() {
-  
-  while (ss.available() > 0) {
-    if (gps.encode(ss.read())){
-      mostrarUbicacion();
-      mostrarFechaHora();
+
+  while (NEO6M.available() > 0) {
+    //Serial.println(F("avaible TRUE"));
+    if (gps.encode(NEO6M.read())) {
+      obtenerDatos();
+      if (okUbi == true) {
+        armarJson();
+        enviar();
+      }
+    } else {
+      //Serial.println(F("Encode falso"));
     }
   }
+  //Serial.println(F("Fuera While"));
 
-  if (millis() > 5000 && gps.charsProcessed() < 10)
-  {
+  if (millis() > 5000 && gps.charsProcessed() < 10) {
     Serial.println(F("No se detectó el GPS. Revise la conexion."));
-    while(true);
+    while (true);
   }
-  
+
 }
 
-void mostrarUbicacion() {
+void obtenerDatos() {
   if (gps.location.isValid()) {
-    Serial.print(F("Ubicacion: ")); 
-    Serial.print(gps.location.lat(),8);
-    Serial.print(F(","));
-    Serial.println(gps.location.lng(),8);
+    latitud = gps.location.lat();
+    longitud = gps.location.lng();
     okUbi = true;
+    Serial.println(F("OK!"));
+  } else {
+    Serial.println(F("NO HAY GPS!"));
   }
+  presion = random(100,400);
 }
 
-void mostrarFechaHora() {
-  Serial.print(F("  Date/Time: "));
-  if (gps.date.isValid())
-  {
-    Serial.print(gps.date.month());
-    Serial.print(F("/"));
-    Serial.print(gps.date.day());
-    Serial.print(F("/"));
-    Serial.print(gps.date.year());
-  }
-  else
-  {
-    Serial.print(F("INVALID"));
-  }
-
-  Serial.print(F(" "));
-  if (gps.time.isValid())
-  {
-    if (gps.time.hour() < 10) Serial.print(F("0"));
-    Serial.print(gps.time.hour());
-    Serial.print(F(":"));
-    if (gps.time.minute() < 10) Serial.print(F("0"));
-    Serial.print(gps.time.minute());
-    Serial.print(F(":"));
-    if (gps.time.second() < 10) Serial.print(F("0"));
-    Serial.print(gps.time.second());
-    Serial.print(F("."));
-    if (gps.time.centisecond() < 10) Serial.print(F("0"));
-    Serial.print(gps.time.centisecond());
-  }
-  else
-  {
-    Serial.print(F("INVALID"));
-  }
-
-  Serial.println();
+void armarJson() {
+  jsonPOST = "{\"latitud\": " + String(latitud, 6) + ",\"longitud\": " + String(longitud, 6) + ",\"presion\": " + String(presion, 2) + "}";
+  Serial.println("armo json");
 }
 
-void obtenerUbicacion() {
-  if (gps.location.isValid()) {
-    lat = gps.location.lat();
-    lng = gps.location.lng();
-  }
+void initGprs() {
+  Serial.println(F("Empezando el INIT..."));
+  SIM900.println("AT");
+  delay(5000);
+  showSerialData();
+  delay(5000);
+  SIM900.println("AT+SAPBR=3,1,\"Contype\",\"GPRS\"");
+  delay(5000);
+  showSerialData();
+  delay(5000);
+  SIM900.println("AT+SAPBR=3,1,\"APN\",\"int.movil.com.bo\"");
+  delay(5000);
+  showSerialData();
+  delay(2000);
+  SIM900.println("AT+SAPBR=1,1");
+  delay(5000);
+  showSerialData();
+  delay(5000);
+  SIM900.println("AT+SAPBR=2,1");
+  delay(5000);
+  showSerialData();
+  delay(5000);
+  Serial.println(F("XXXXXXX  *  XXXXXXX"));
 }
 
-void generarJson() {
-  jsonPost = ""
+void enviar() {
+  Serial.println(F("Empezando a enviar..."));
+  SIM900.println("AT+HTTPINIT");
+  delay(2000);
+  showSerialData();
+  delay(2000);
+  SIM900.println("AT+HTTPPARA=\"CID\",1");
+  delay(2000);
+  showSerialData();
+  delay(2000);
+  SIM900.println("AT+HTTPPARA=\"URL\",\"http://glacial-eyrie-03654.herokuapp.com/api/actualizarEquipo/1\"");
+  delay(2000);
+  showSerialData();
+  delay(2000);
+  SIM900.println("AT+HTTPPARA=\"CONTENT\",\"application/json\"");
+  delay(2000);
+  showSerialData();
+  delay(2000);
+  SIM900.println("AT+HTTPDATA=" + String(jsonPOST.length()) + ",10000");
+  delay(2000);
+  showSerialData();
+  delay(2000);
+  SIM900.println(jsonPOST);
+  delay(2000);
+  showSerialData();
+  delay(2000);
+  SIM900.println("AT+HTTPACTION=1");
+  delay(5000);
+  showSerialData();
+  delay(5000);
+  SIM900.println("AT+HTTPREAD");  /* Read data from HTTP server */
+  delay(5000);
+  showSerialData();
+  delay(5000);
+  SIM900.println("AT+HTTPTERM");  /* Terminate HTTP service */
+  delay(2000);
+  showSerialData();
+  delay(2000);
+  Serial.println(F("Terminando de enviar..."));
+  okUbi = false;
+}
+
+void showSerialData() {
+  while (SIM900.available() > 0)
+    Serial.write(char(SIM900.read()));
 }
