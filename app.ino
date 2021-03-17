@@ -57,7 +57,7 @@ void obtenerDatos() {
   } else {
     Serial.println(F("NO HAY GPS!"));
   }
-  presion = random(100,400);
+  presion = random(150,210);
 }
 
 void armarJson() {
